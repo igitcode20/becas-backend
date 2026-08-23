@@ -16,6 +16,7 @@ const { BECARIOS } = require('./src/data/becarios');
 // Importar rutas
 const authRoutes = require('./src/routes/auth');
 const becaRoutes = require('./src/routes/becas');
+const reporteRoutes = require('./src/routes/reportes');  // ← NUEVA
 const adminRoutes = require('./src/routes/admin');
 
 // ========== CONFIGURACIÓN DE CLOUDINARY ==========
@@ -40,6 +41,7 @@ app.use(fileUpload({
 // ========== RUTAS ==========
 app.use('/api/auth', authRoutes);
 app.use('/api/becas', becaRoutes);
+app.use('/api/reportes', reporteRoutes);  // ← NUEVA
 app.use('/api/admin', adminRoutes);
 
 // ========== RUTA DE PRUEBA ==========
