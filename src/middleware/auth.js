@@ -44,7 +44,8 @@ const verificarAccesoSeccion = (req, res, next) => {
     seccion1: 1,
     seccion2: 2,
     seccion3: 3,
-    seccion4: 4
+    seccion4: 4,
+    seccion5: 5  // ← AGREGAR SECCIÓN 5
   };
 
   const userSeccion = rolSeccion[req.user.rol];

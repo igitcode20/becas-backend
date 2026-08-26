@@ -9,8 +9,7 @@ const UserSchema = new mongoose.Schema({
     type: String,
     required: [true, 'El email es requerido'],
     unique: true,
-    lowercase: true,
-    match: [/^\S+@\S+\.\S+$/, 'Email inválido']
+    lowercase: true
   },
   password: {
     type: String,
@@ -18,12 +17,12 @@ const UserSchema = new mongoose.Schema({
   },
   rol: {
     type: String,
-    enum: ['admin', 'seccion1', 'seccion2', 'seccion3', 'seccion4'],
+    enum: ['admin', 'seccion1', 'seccion2', 'seccion3', 'seccion4', 'seccion5'],
     required: true
   },
   seccion: {
     type: Number,
-    enum: [1, 2, 3, 4],
+    enum: [1, 2, 3, 4, 5],
     required: function() {
       return this.rol !== 'admin';
     }
@@ -36,7 +35,6 @@ const UserSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Método para ocultar la contraseña al enviar JSON
 UserSchema.methods.toJSON = function() {
   const user = this.toObject();
   delete user.password;

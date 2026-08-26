@@ -2,7 +2,6 @@ const ExcelJS = require('exceljs');
 const PDFDocument = require('pdfkit');
 const archiver = require('archiver');
 const Beca = require('../models/Beca');
-const cloudinary = require('cloudinary').v2;
 const https = require('https');
 const http = require('http');
 
@@ -28,13 +27,13 @@ const generarExcel = async (req, res) => {
     const { seccion } = req.query;
     let filtro = {};
 
-    // Si no es admin, solo ve su sección
     if (req.user.rol !== 'admin') {
       const rolSeccion = {
         seccion1: 1,
         seccion2: 2,
         seccion3: 3,
-        seccion4: 4
+        seccion4: 4,
+        seccion5: 5
       };
       filtro.seccion = rolSeccion[req.user.rol];
     } else if (seccion && seccion !== 'todas') {
@@ -47,7 +46,6 @@ const generarExcel = async (req, res) => {
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Becas');
 
-    // Definir columnas
     worksheet.columns = [
       { header: '#', key: 'id', width: 8 },
       { header: 'Nombre', key: 'nombre', width: 40 },
@@ -60,7 +58,6 @@ const generarExcel = async (req, res) => {
       { header: 'Día', key: 'dia_entrega', width: 8 }
     ];
 
-    // Agregar datos
     becas.forEach(b => {
       worksheet.addRow({
         id: b.id,
@@ -75,7 +72,6 @@ const generarExcel = async (req, res) => {
       });
     });
 
-    // Estilos
     worksheet.getRow(1).font = { bold: true };
     worksheet.getRow(1).fill = {
       type: 'pattern',
@@ -84,7 +80,6 @@ const generarExcel = async (req, res) => {
     };
     worksheet.getRow(1).font = { color: { argb: 'FFFFFFFF' } };
 
-    // Respuesta
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename=reporte_becas_${nombreSeccion}_${new Date().toISOString().slice(0,10)}.xlsx`);
 
@@ -107,7 +102,8 @@ const generarPDF = async (req, res) => {
         seccion1: 1,
         seccion2: 2,
         seccion3: 3,
-        seccion4: 4
+        seccion4: 4,
+        seccion5: 5
       };
       filtro.seccion = rolSeccion[req.user.rol];
     } else if (seccion && seccion !== 'todas') {
@@ -117,7 +113,6 @@ const generarPDF = async (req, res) => {
     const becas = await Beca.find(filtro).sort({ id: 1 });
     const nombreSeccion = filtro.seccion ? `Sección ${filtro.seccion}` : 'Todas las secciones';
 
-    // Crear PDF
     const doc = new PDFDocument({
       margins: { top: 50, bottom: 50, left: 50, right: 50 },
       size: 'A4'
@@ -128,13 +123,11 @@ const generarPDF = async (req, res) => {
 
     doc.pipe(res);
 
-    // Título
     doc.fontSize(16).text('REPORTE DE BECAS', { align: 'center' });
     doc.fontSize(12).text(`UNAN CUR Chontales - ${nombreSeccion}`, { align: 'center' });
     doc.text(`Fecha: ${new Date().toLocaleDateString('es-NI')}`, { align: 'center' });
     doc.moveDown();
 
-    // Estadísticas
     const total = becas.length;
     const entregadas = becas.filter(b => b.estado === 'entregada').length;
     const pendientes = becas.filter(b => b.estado === 'pendiente').length;
@@ -149,12 +142,10 @@ const generarPDF = async (req, res) => {
     doc.text(`  |  Con Detalle: ${conDetalle}`);
     doc.moveDown();
 
-    // Tabla de becarios
     const columnas = ['#', 'Nombre', 'Cédula', 'Estado'];
     const anchoColumnas = [30, 200, 100, 80];
     let y = doc.y + 10;
 
-    // Encabezados
     doc.fontSize(10).font('Helvetica-Bold');
     let x = 50;
     columnas.forEach((col, i) => {
@@ -167,9 +158,8 @@ const generarPDF = async (req, res) => {
     doc.moveTo(50, y).lineTo(550, y).stroke();
     y += 10;
 
-    // Datos
     doc.font('Helvetica');
-    becas.forEach((beca, index) => {
+    becas.forEach((beca) => {
       if (y > 700) {
         doc.addPage();
         y = 50;
@@ -209,14 +199,14 @@ const generarFotosZip = async (req, res) => {
         seccion1: 1,
         seccion2: 2,
         seccion3: 3,
-        seccion4: 4
+        seccion4: 4,
+        seccion5: 5
       };
       filtro.seccion = rolSeccion[req.user.rol];
     } else if (seccion && seccion !== 'todas') {
       filtro.seccion = parseInt(seccion);
     }
 
-    // Solo becas con foto
     filtro.foto = { $ne: '' };
 
     const becas = await Beca.find(filtro).sort({ id: 1 });
@@ -225,7 +215,6 @@ const generarFotosZip = async (req, res) => {
       return res.status(404).json({ error: 'No hay fotos disponibles para esta sección' });
     }
 
-    // Crear ZIP
     const zip = archiver('zip', { zlib: { level: 9 } });
 
     res.setHeader('Content-Type', 'application/zip');
@@ -234,25 +223,21 @@ const generarFotosZip = async (req, res) => {
 
     zip.pipe(res);
 
-    // Descargar y agregar cada foto al ZIP
     let fotosAgregadas = 0;
     let errores = 0;
 
     for (const beca of becas) {
       try {
-        // Usar la función de descarga con https/http
         const buffer = await descargarImagen(beca.foto);
         const nombreArchivo = `${String(beca.id).padStart(3, '0')}_${beca.nombre.replace(/[^a-zA-Z0-9]/g, '_')}.jpg`;
         zip.append(buffer, { name: nombreArchivo });
         fotosAgregadas++;
-        console.log(`✅ Foto ${beca.id} agregada: ${nombreArchivo}`);
       } catch (error) {
         errores++;
         console.error(`❌ Error descargando foto ${beca.id}:`, error.message);
       }
     }
 
-    // Finalizar ZIP
     await zip.finalize();
 
     console.log(`📸 ZIP generado: ${fotosAgregadas} fotos agregadas, ${errores} errores`);
