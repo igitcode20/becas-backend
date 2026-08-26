@@ -3,7 +3,24 @@ const PDFDocument = require('pdfkit');
 const archiver = require('archiver');
 const Beca = require('../models/Beca');
 const cloudinary = require('cloudinary').v2;
-const stream = require('stream');
+const https = require('https');
+const http = require('http');
+
+// ========== FUNCIÓN PARA DESCARGAR IMÁGENES ==========
+const descargarImagen = (url) => {
+  return new Promise((resolve, reject) => {
+    const protocol = url.startsWith('https') ? https : http;
+    protocol.get(url, (response) => {
+      if (response.statusCode === 200) {
+        const chunks = [];
+        response.on('data', (chunk) => chunks.push(chunk));
+        response.on('end', () => resolve(Buffer.concat(chunks)));
+      } else {
+        reject(new Error(`Error al descargar: ${response.statusCode}`));
+      }
+    }).on('error', reject);
+  });
+};
 
 // ========== GENERAR REPORTE EXCEL ==========
 const generarExcel = async (req, res) => {
@@ -11,11 +28,21 @@ const generarExcel = async (req, res) => {
     const { seccion } = req.query;
     let filtro = {};
 
-    if (seccion) {
+    // Si no es admin, solo ve su sección
+    if (req.user.rol !== 'admin') {
+      const rolSeccion = {
+        seccion1: 1,
+        seccion2: 2,
+        seccion3: 3,
+        seccion4: 4
+      };
+      filtro.seccion = rolSeccion[req.user.rol];
+    } else if (seccion && seccion !== 'todas') {
       filtro.seccion = parseInt(seccion);
     }
 
     const becas = await Beca.find(filtro).sort({ id: 1 });
+    const nombreSeccion = filtro.seccion ? `Seccion_${filtro.seccion}` : 'Todas';
 
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Becas');
@@ -59,11 +86,12 @@ const generarExcel = async (req, res) => {
 
     // Respuesta
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename=reporte_becas_${new Date().toISOString().slice(0,10)}.xlsx`);
+    res.setHeader('Content-Disposition', `attachment; filename=reporte_becas_${nombreSeccion}_${new Date().toISOString().slice(0,10)}.xlsx`);
 
     await workbook.xlsx.write(res);
     res.end();
   } catch (error) {
+    console.error('Error generando Excel:', error);
     res.status(500).json({ error: error.message });
   }
 };
@@ -74,12 +102,20 @@ const generarPDF = async (req, res) => {
     const { seccion } = req.query;
     let filtro = {};
 
-    if (seccion) {
+    if (req.user.rol !== 'admin') {
+      const rolSeccion = {
+        seccion1: 1,
+        seccion2: 2,
+        seccion3: 3,
+        seccion4: 4
+      };
+      filtro.seccion = rolSeccion[req.user.rol];
+    } else if (seccion && seccion !== 'todas') {
       filtro.seccion = parseInt(seccion);
     }
 
     const becas = await Beca.find(filtro).sort({ id: 1 });
-    const nombreSeccion = seccion ? `Sección ${seccion}` : 'Todas las secciones';
+    const nombreSeccion = filtro.seccion ? `Sección ${filtro.seccion}` : 'Todas las secciones';
 
     // Crear PDF
     const doc = new PDFDocument({
@@ -88,7 +124,7 @@ const generarPDF = async (req, res) => {
     });
 
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename=reporte_becas_${new Date().toISOString().slice(0,10)}.pdf`);
+    res.setHeader('Content-Disposition', `attachment; filename=reporte_becas_${nombreSeccion.replace(/\s/g, '_')}_${new Date().toISOString().slice(0,10)}.pdf`);
 
     doc.pipe(res);
 
@@ -157,6 +193,7 @@ const generarPDF = async (req, res) => {
 
     doc.end();
   } catch (error) {
+    console.error('Error generando PDF:', error);
     res.status(500).json({ error: error.message });
   }
 };
@@ -167,7 +204,15 @@ const generarFotosZip = async (req, res) => {
     const { seccion } = req.query;
     let filtro = {};
 
-    if (seccion) {
+    if (req.user.rol !== 'admin') {
+      const rolSeccion = {
+        seccion1: 1,
+        seccion2: 2,
+        seccion3: 3,
+        seccion4: 4
+      };
+      filtro.seccion = rolSeccion[req.user.rol];
+    } else if (seccion && seccion !== 'todas') {
       filtro.seccion = parseInt(seccion);
     }
 
@@ -177,32 +222,43 @@ const generarFotosZip = async (req, res) => {
     const becas = await Beca.find(filtro).sort({ id: 1 });
 
     if (becas.length === 0) {
-      return res.status(404).json({ error: 'No hay fotos disponibles' });
+      return res.status(404).json({ error: 'No hay fotos disponibles para esta sección' });
     }
 
     // Crear ZIP
     const zip = archiver('zip', { zlib: { level: 9 } });
-    const bufferStream = new stream.PassThrough();
 
     res.setHeader('Content-Type', 'application/zip');
-    res.setHeader('Content-Disposition', `attachment; filename=fotos_becas_${new Date().toISOString().slice(0,10)}.zip`);
+    const nombreSeccion = filtro.seccion ? `Seccion_${filtro.seccion}` : 'Todas';
+    res.setHeader('Content-Disposition', `attachment; filename=fotos_becas_${nombreSeccion}_${new Date().toISOString().slice(0,10)}.zip`);
 
     zip.pipe(res);
 
     // Descargar y agregar cada foto al ZIP
+    let fotosAgregadas = 0;
+    let errores = 0;
+
     for (const beca of becas) {
       try {
-        const response = await fetch(beca.foto);
-        const buffer = await response.buffer();
-        const nombreArchivo = `${beca.id}_${beca.nombre.replace(/\s/g, '_')}.jpg`;
+        // Usar la función de descarga con https/http
+        const buffer = await descargarImagen(beca.foto);
+        const nombreArchivo = `${String(beca.id).padStart(3, '0')}_${beca.nombre.replace(/[^a-zA-Z0-9]/g, '_')}.jpg`;
         zip.append(buffer, { name: nombreArchivo });
+        fotosAgregadas++;
+        console.log(`✅ Foto ${beca.id} agregada: ${nombreArchivo}`);
       } catch (error) {
-        console.error(`Error descargando foto ${beca.id}:`, error);
+        errores++;
+        console.error(`❌ Error descargando foto ${beca.id}:`, error.message);
       }
     }
 
+    // Finalizar ZIP
     await zip.finalize();
+
+    console.log(`📸 ZIP generado: ${fotosAgregadas} fotos agregadas, ${errores} errores`);
+
   } catch (error) {
+    console.error('Error generando ZIP:', error);
     res.status(500).json({ error: error.message });
   }
 };
